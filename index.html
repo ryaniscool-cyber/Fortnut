@@ -1,60 +1,86 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>3D Multiplayer Game with Usernames</title>
-  <style>
-    body { margin: 0; overflow: hidden; font-family: sans-serif; }
-    #ui {
-      position: absolute; top: 10px; left: 10px; z-index: 10;
-      background: rgba(0,0,0,0.7); padding: 10px; color: white; border-radius: 5px;
-    }
-    input, button { padding: 5px; margin: 5px; }
-    .label {
-      position: absolute;
-      color: white;
-      font-weight: bold;
-      pointer-events: none;
-      transform: translate(-50%, -100%);
-    }
-  </style>
-</head>
-<body>
-  <div id="ui">
-    <div>
+  <head>
+    <meta charset="UTF-8" />
+    <title>3D Multiplayer Game</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background-color: black;
+        color: white;
+        font-family: sans-serif;
+        text-align: center;
+      }
+
+      #ui {
+        position: absolute;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 2;
+      }
+
+      #username, #connectId {
+        margin: 0.25em;
+        padding: 0.3em;
+      }
+
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui">
       <input id="username" placeholder="Enter your name" />
-      <button onclick="startGame()">Start</button>
+      <input id="connectId" placeholder="Other player's ID" />
+      <button id="connectBtn">Connect</button>
+      <div id="yourId"></div>
     </div>
-    <div style="display:none" id="connect-ui">
-      <p>Your ID: <span id="my-id"></span></p>
-      <input id="peer-id" placeholder="Other player ID" />
-      <button onclick="connectToPeer()">Connect</button>
-    </div>
-  </div>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.min.js"></script>
+    <script>
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+      const renderer = new THREE.WebGLRenderer();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
 
-  <div id="labels"></div>
+      const myName = document.getElementById('username');
+      const connectId = document.getElementById('connectId');
+      const connectBtn = document.getElementById('connectBtn');
+      const yourId = document.getElementById('yourId');
 
-  <!-- Include Three.js and PeerJS -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+      const geometry = new THREE.BoxGeometry();
+      const myMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+      const otherMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
 
-  <script>
-    let peer, conn;
-    let local = { name: '', x: 0, z: 0 };
-    let remote = { name: 'Waiting...', x: 5, z: 5 };
-    let keys = {};
-    let scene, camera, renderer, localCube, remoteCube;
-    let localLabel, remoteLabel;
+      const myCube = new THREE.Mesh(geometry, myMaterial);
+      scene.add(myCube);
 
-    function startGame() {
-      local.name = document.getElementById('username').value.trim();
-      if (!local.name) return alert('Please enter your name.');
+      const otherCube = new THREE.Mesh(geometry, otherMaterial);
+      scene.add(otherCube);
 
-      // Create peer
-      peer = new Peer();
+      // Text label above cubes
+      const createLabel = (text) => {
+        const div = document.createElement('div');
+        div.style.position = 'absolute';
+        div.style.color = 'white';
+        div.style.fontSize = '12px';
+        div.innerText = text;
+        document.body.appendChild(div);
+        return div;
+      };
+
+      const myLabel = createLabel('');
+      const otherLabel = createLabel('');
+
+      let conn;
+
+      const peer = new Peer();
       peer.on('open', id => {
-        document.getElementById('my-id').textContent = id;
-        document.getElementById('connect-ui').style.display = 'block';
+        yourId.textContent = `Your ID: ${id}`;
       });
 
       peer.on('connection', connection => {
@@ -62,114 +88,62 @@
         setupConnection();
       });
 
-      initScene();
-      animate();
-    }
+      connectBtn.onclick = () => {
+        conn = peer.connect(connectId.value);
+        setupConnection();
+      };
 
-    function connectToPeer() {
-      const peerId = document.getElementById('peer-id').value.trim();
-      if (!peerId) return alert('Enter the other player’s ID!');
-      conn = peer.connect(peerId);
-      setupConnection();
-    }
-
-    function setupConnection() {
-      conn.on('open', () => {
-        conn.send(local); // Send name and position
-      });
-
-      conn.on('data', data => {
-        remote = data;
-        remoteCube.position.set(remote.x, 0.5, remote.z);
-        remoteLabel.textContent = remote.name;
-      });
-    }
-
-    function initScene() {
-      // Three.js basics
-      scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-      camera.position.set(0, 10, 10);
-      camera.lookAt(0, 0, 0);
-
-      renderer = new THREE.WebGLRenderer();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      document.body.appendChild(renderer.domElement);
-
-      // Light and ground
-      const light = new THREE.HemisphereLight(0xffffff, 0x444444);
-      scene.add(light);
-
-      const ground = new THREE.Mesh(
-        new THREE.PlaneGeometry(100, 100),
-        new THREE.MeshStandardMaterial({ color: 0x333333 })
-      );
-      ground.rotation.x = -Math.PI / 2;
-      scene.add(ground);
-
-      // Player cubes
-      const materialLocal = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
-      const materialRemote = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-
-      localCube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), materialLocal);
-      remoteCube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), materialRemote);
-      localCube.position.y = remoteCube.position.y = 0.5;
-
-      scene.add(localCube);
-      scene.add(remoteCube);
-
-      // Labels
-      localLabel = createLabel(local.name);
-      remoteLabel = createLabel(remote.name);
-
-      window.addEventListener('resize', onWindowResize);
-      window.addEventListener('keydown', e => keys[e.key] = true);
-      window.addEventListener('keyup', e => keys[e.key] = false);
-    }
-
-    function createLabel(name) {
-      const label = document.createElement('div');
-      label.className = 'label';
-      label.textContent = name;
-      document.getElementById('labels').appendChild(label);
-      return label;
-    }
-
-    function updateLabel(label, obj) {
-      const vector = new THREE.Vector3();
-      obj.getWorldPosition(vector);
-      vector.project(camera);
-      const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-      const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
-      label.style.left = `${x}px`;
-      label.style.top = `${y - 30}px`;
-    }
-
-    function animate() {
-      requestAnimationFrame(animate);
-
-      const speed = 0.1;
-      if (keys['ArrowUp']) local.z -= speed;
-      if (keys['ArrowDown']) local.z += speed;
-      if (keys['ArrowLeft']) local.x -= speed;
-      if (keys['ArrowRight']) local.x += speed;
-
-      localCube.position.set(local.x, 0.5, local.z);
-      updateLabel(localLabel, localCube);
-      updateLabel(remoteLabel, remoteCube);
-
-      if (conn && conn.open) {
-        conn.send(local);
+      function setupConnection() {
+        if (!conn) return;
+        conn.on('data', data => {
+          if (data.pos) {
+            otherCube.position.set(data.pos.x, data.pos.y, data.pos.z);
+          }
+          if (data.name) {
+            otherLabel.innerText = data.name;
+          }
+        });
       }
 
-      renderer.render(scene, camera);
-    }
+      camera.position.z = 5;
 
-    function onWindowResize() {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-  </script>
-</body>
+      const keys = {};
+      document.addEventListener('keydown', e => keys[e.key] = true);
+      document.addEventListener('keyup', e => keys[e.key] = false);
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        if (keys['ArrowUp']) myCube.position.y += 0.05;
+        if (keys['ArrowDown']) myCube.position.y -= 0.05;
+        if (keys['ArrowLeft']) myCube.position.x -= 0.05;
+        if (keys['ArrowRight']) myCube.position.x += 0.05;
+
+        // Send position and name to peer
+        if (conn && conn.open) {
+          conn.send({
+            pos: myCube.position,
+            name: myName.value
+          });
+        }
+
+        // Update my name label
+        myLabel.innerText = myName.value || 'Me';
+
+        // Position labels above cubes
+        [myCube, otherCube].forEach((cube, i) => {
+          const vector = cube.position.clone().project(camera);
+          const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+          const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+          const label = i === 0 ? myLabel : otherLabel;
+          label.style.left = `${x}px`;
+          label.style.top = `${y - 20}px`;
+        });
+
+        renderer.render(scene, camera);
+      }
+
+      animate();
+    </script>
+  </body>
 </html>
