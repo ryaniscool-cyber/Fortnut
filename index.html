@@ -1,149 +1,163 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>3D Multiplayer Game</title>
-    <style>
-      body {
-        margin: 0;
-        overflow: hidden;
-        background-color: black;
-        color: white;
-        font-family: sans-serif;
-        text-align: center;
-      }
+<head>
+  <meta charset="UTF-8">
+  <title>3D Shooter Multiplayer</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; color: #fff; font-family: sans-serif; }
+    #ui {
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      text-align: center; z-index: 2;
+    }
+    input, button {
+      padding: 5px;
+      margin: 2px;
+    }
+    #info {
+      position: absolute; top: 10px; right: 10px;
+      background: rgba(0, 0, 0, 0.5); padding: 10px; border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <input id="username" placeholder="Your name">
+    <input id="peerId" placeholder="Friend's ID">
+    <button id="connectBtn">Connect</button>
+    <div id="myId"></div>
+  </div>
+  <div id="info">
+    <div id="health">❤️ Health: 100</div>
+    <div id="ammo">🔫 Ammo: 10</div>
+  </div>
 
-      #ui {
-        position: absolute;
-        top: 10px;
-        left: 50%;
-        transform: translateX(-50%);
-        z-index: 2;
-      }
+  <script src="https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <script>
+    // Setup Three.js
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
 
-      #username, #connectId {
-        margin: 0.25em;
-        padding: 0.3em;
-      }
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const myMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+    const enemyMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const myPlayer = new THREE.Mesh(geometry, myMaterial);
+    const enemyPlayer = new THREE.Mesh(geometry, enemyMaterial);
+    scene.add(myPlayer);
+    scene.add(enemyPlayer);
 
-      canvas {
-        display: block;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="ui">
-      <input id="username" placeholder="Enter your name" />
-      <input id="connectId" placeholder="Other player's ID" />
-      <button id="connectBtn">Connect</button>
-      <div id="yourId"></div>
-    </div>
-    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.min.js"></script>
-    <script>
-      const scene = new THREE.Scene();
-      const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-      const renderer = new THREE.WebGLRenderer();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      document.body.appendChild(renderer.domElement);
+    camera.position.z = 5;
 
-      const myName = document.getElementById('username');
-      const connectId = document.getElementById('connectId');
-      const connectBtn = document.getElementById('connectBtn');
-      const yourId = document.getElementById('yourId');
+    // Bullets
+    let bullets = [];
+    const bulletGeometry = new THREE.SphereGeometry(0.1);
+    const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
 
-      const geometry = new THREE.BoxGeometry();
-      const myMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-      const otherMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    // Multiplayer
+    const peer = new Peer();
+    let conn;
+    let enemyHealth = 100;
+    let myHealth = 100;
+    let ammo = 10;
 
-      const myCube = new THREE.Mesh(geometry, myMaterial);
-      scene.add(myCube);
+    const username = document.getElementById("username");
+    const peerId = document.getElementById("peerId");
+    const connectBtn = document.getElementById("connectBtn");
+    const myIdDiv = document.getElementById("myId");
+    const healthUI = document.getElementById("health");
+    const ammoUI = document.getElementById("ammo");
 
-      const otherCube = new THREE.Mesh(geometry, otherMaterial);
-      scene.add(otherCube);
+    peer.on("open", id => {
+      myIdDiv.textContent = "Your ID: " + id;
+    });
 
-      // Text label above cubes
-      const createLabel = (text) => {
-        const div = document.createElement('div');
-        div.style.position = 'absolute';
-        div.style.color = 'white';
-        div.style.fontSize = '12px';
-        div.innerText = text;
-        document.body.appendChild(div);
-        return div;
-      };
+    peer.on("connection", connection => {
+      conn = connection;
+      conn.on("data", handleData);
+    });
 
-      const myLabel = createLabel('');
-      const otherLabel = createLabel('');
-
-      let conn;
-
-      const peer = new Peer();
-      peer.on('open', id => {
-        yourId.textContent = `Your ID: ${id}`;
+    connectBtn.onclick = () => {
+      conn = peer.connect(peerId.value);
+      conn.on("open", () => {
+        conn.send({ name: username.value });
       });
+      conn.on("data", handleData);
+    };
 
-      peer.on('connection', connection => {
-        conn = connection;
-        setupConnection();
-      });
+    function handleData(data) {
+      if (data.pos) {
+        enemyPlayer.position.set(data.pos.x, data.pos.y, data.pos.z);
+      }
+      if (data.shoot) {
+        spawnBullet(enemyPlayer.position.clone(), true);
+      }
+      if (data.name) {
+        enemyPlayer.name = data.name;
+      }
+      if (data.hit) {
+        myHealth -= 10;
+        healthUI.textContent = "❤️ Health: " + myHealth;
+      }
+    }
 
-      connectBtn.onclick = () => {
-        conn = peer.connect(connectId.value);
-        setupConnection();
-      };
+    // Input
+    const keys = {};
+    document.addEventListener("keydown", e => keys[e.key] = true);
+    document.addEventListener("keyup", e => keys[e.key] = false);
+    document.addEventListener("click", () => {
+      if (ammo > 0) {
+        shoot();
+        ammo--;
+        ammoUI.textContent = "🔫 Ammo: " + ammo;
+      }
+    });
 
-      function setupConnection() {
-        if (!conn) return;
-        conn.on('data', data => {
-          if (data.pos) {
-            otherCube.position.set(data.pos.x, data.pos.y, data.pos.z);
-          }
-          if (data.name) {
-            otherLabel.innerText = data.name;
-          }
-        });
+    function shoot() {
+      spawnBullet(myPlayer.position.clone());
+      if (conn && conn.open) conn.send({ shoot: true });
+    }
+
+    function spawnBullet(position, isEnemy = false) {
+      const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial.clone());
+      bullet.position.copy(position);
+      bullet.userData = { direction: isEnemy ? -1 : 1, fromEnemy: isEnemy };
+      scene.add(bullet);
+      bullets.push(bullet);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (keys["ArrowUp"]) myPlayer.position.y += 0.05;
+      if (keys["ArrowDown"]) myPlayer.position.y -= 0.05;
+      if (keys["ArrowLeft"]) myPlayer.position.x -= 0.05;
+      if (keys["ArrowRight"]) myPlayer.position.x += 0.05;
+
+      if (conn && conn.open) {
+        conn.send({ pos: myPlayer.position, name: username.value });
       }
 
-      camera.position.z = 5;
-
-      const keys = {};
-      document.addEventListener('keydown', e => keys[e.key] = true);
-      document.addEventListener('keyup', e => keys[e.key] = false);
-
-      function animate() {
-        requestAnimationFrame(animate);
-
-        if (keys['ArrowUp']) myCube.position.y += 0.05;
-        if (keys['ArrowDown']) myCube.position.y -= 0.05;
-        if (keys['ArrowLeft']) myCube.position.x -= 0.05;
-        if (keys['ArrowRight']) myCube.position.x += 0.05;
-
-        // Send position and name to peer
-        if (conn && conn.open) {
-          conn.send({
-            pos: myCube.position,
-            name: myName.value
-          });
+      // Bullet movement & hit detection
+      bullets.forEach((bullet, i) => {
+        bullet.position.z += bullet.userData.direction * 0.1;
+        if (!bullet.userData.fromEnemy && bullet.position.distanceTo(enemyPlayer.position) < 0.5) {
+          if (conn && conn.open) conn.send({ hit: true });
+          scene.remove(bullet);
+          bullets.splice(i, 1);
         }
+        if (bullet.userData.fromEnemy && bullet.position.distanceTo(myPlayer.position) < 0.5) {
+          scene.remove(bullet);
+          bullets.splice(i, 1);
+        }
+      });
 
-        // Update my name label
-        myLabel.innerText = myName.value || 'Me';
+      renderer.render(scene, camera);
+    }
 
-        // Position labels above cubes
-        [myCube, otherCube].forEach((cube, i) => {
-          const vector = cube.position.clone().project(camera);
-          const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-          const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
-          const label = i === 0 ? myLabel : otherLabel;
-          label.style.left = `${x}px`;
-          label.style.top = `${y - 20}px`;
-        });
-
-        renderer.render(scene, camera);
-      }
-
-      animate();
-    </script>
-  </body>
+    animate();
+  </script>
+</body>
 </html>
