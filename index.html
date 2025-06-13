@@ -1,18 +1,27 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>P2P Shooter Game</title>
+  <title>P2P Shooter Game with Usernames</title>
   <style>
     body { margin: 0; background: #111; color: white; font-family: sans-serif; text-align: center; }
     canvas { display: block; margin: auto; background: #222; }
-    input { margin: 5px; }
+    input, button { margin: 5px; padding: 5px; }
   </style>
 </head>
 <body>
   <h2>P2P Shooter Game</h2>
-  <p>Your ID: <span id="my-id">...</span></p>
-  <input id="peer-id" placeholder="Enter other player's ID" />
-  <button onclick="connectToPeer()">Connect</button>
+
+  <div>
+    <input id="username" placeholder="Your name" />
+    <button onclick="startGame()">Start</button>
+  </div>
+
+  <div style="display:none" id="game-ui">
+    <p>Your ID: <span id="my-id">...</span></p>
+    <input id="peer-id" placeholder="Other player ID" />
+    <button onclick="connectToPeer()">Connect</button>
+  </div>
+
   <canvas id="game" width="800" height="600"></canvas>
 
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
@@ -20,31 +29,50 @@
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
 
-    const peer = new Peer();
+    let username = '';
     let conn;
+    let peer;
+    let enemy = { x: 300, y: 300, name: 'Enemy', color: 'red' };
+    let player = { x: 100, y: 100, name: '', color: 'lime' };
 
-    const player = { x: 100, y: 100, color: 'lime' };
-    const enemy = { x: 300, y: 300, color: 'red' };
+    function startGame() {
+      username = document.getElementById('username').value.trim();
+      if (!username) return alert('Enter a name!');
 
-    peer.on('open', id => {
-      document.getElementById('my-id').textContent = id;
-    });
+      player.name = username;
+      peer = new Peer();
 
-    peer.on('connection', connection => {
-      conn = connection;
-      setupConnection();
-    });
+      peer.on('open', id => {
+        document.getElementById('my-id').textContent = id;
+        document.getElementById('game-ui').style.display = 'block';
+      });
+
+      peer.on('connection', connection => {
+        conn = connection;
+        setupConnection();
+      });
+
+      document.getElementById('username').disabled = true;
+      document.querySelector('button[onclick="startGame()"]').disabled = true;
+    }
 
     function connectToPeer() {
-      const otherId = document.getElementById('peer-id').value;
+      const otherId = document.getElementById('peer-id').value.trim();
+      if (!otherId) return alert('Enter peer ID!');
       conn = peer.connect(otherId);
       setupConnection();
     }
 
     function setupConnection() {
+      conn.on('open', () => {
+        // Send player info (position + name)
+        conn.send(player);
+      });
+
       conn.on('data', data => {
         enemy.x = data.x;
         enemy.y = data.y;
+        enemy.name = data.name || 'Enemy';
       });
     }
 
@@ -60,14 +88,22 @@
 
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw player
       ctx.fillStyle = player.color;
       ctx.fillRect(player.x, player.y, 20, 20);
+      ctx.fillStyle = 'white';
+      ctx.fillText(player.name, player.x - 10, player.y - 5);
 
+      // Draw enemy
       ctx.fillStyle = enemy.color;
       ctx.fillRect(enemy.x, enemy.y, 20, 20);
+      ctx.fillStyle = 'white';
+      ctx.fillText(enemy.name, enemy.x - 10, enemy.y - 5);
 
       requestAnimationFrame(draw);
     }
+
     draw();
   </script>
 </body>
