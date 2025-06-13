@@ -1,50 +1,56 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>P2P Shooter Game with Usernames</title>
+  <meta charset="UTF-8">
+  <title>3D P2P Multiplayer Game</title>
   <style>
-    body { margin: 0; background: #111; color: white; font-family: sans-serif; text-align: center; }
-    canvas { display: block; margin: auto; background: #222; }
-    input, button { margin: 5px; padding: 5px; }
+    body { margin: 0; overflow: hidden; background: #000; color: white; font-family: sans-serif; }
+    #ui {
+      position: absolute; top: 10px; left: 10px; z-index: 10;
+      background: rgba(0, 0, 0, 0.7); padding: 10px; border-radius: 5px;
+    }
+    input, button { margin: 4px; padding: 5px; }
   </style>
 </head>
 <body>
-  <h2>P2P Shooter Game</h2>
-
-  <div>
-    <input id="username" placeholder="Your name" />
-    <button onclick="startGame()">Start</button>
+  <div id="ui">
+    <div>
+      <label>Username:</label>
+      <input id="username" placeholder="Your name">
+      <button onclick="startGame()">Start</button>
+    </div>
+    <div style="display:none" id="connect-ui">
+      <p>Your ID: <span id="my-id">...</span></p>
+      <input id="peer-id" placeholder="Other player ID">
+      <button onclick="connectToPeer()">Connect</button>
+    </div>
   </div>
 
-  <div style="display:none" id="game-ui">
-    <p>Your ID: <span id="my-id">...</span></p>
-    <input id="peer-id" placeholder="Other player ID" />
-    <button onclick="connectToPeer()">Connect</button>
-  </div>
-
-  <canvas id="game" width="800" height="600"></canvas>
-
+  <!-- Three.js and PeerJS -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-  <script>
-    const canvas = document.getElementById('game');
-    const ctx = canvas.getContext('2d');
 
+  <script>
+    let peer, conn;
     let username = '';
-    let conn;
-    let peer;
-    let enemy = { x: 300, y: 300, name: 'Enemy', color: 'red' };
-    let player = { x: 100, y: 100, name: '', color: 'lime' };
+    let scene, camera, renderer, controls;
+    let localCube, remoteCube;
+    let remoteLabel, localLabel;
+
+    const players = {
+      local: { x: 0, z: 0, name: '', color: 0x00ff00 },
+      remote: { x: 5, z: 5, name: 'Waiting...', color: 0xff0000 }
+    };
 
     function startGame() {
       username = document.getElementById('username').value.trim();
-      if (!username) return alert('Enter a name!');
+      if (!username) return alert('Enter a username!');
+      players.local.name = username;
 
-      player.name = username;
       peer = new Peer();
-
       peer.on('open', id => {
         document.getElementById('my-id').textContent = id;
-        document.getElementById('game-ui').style.display = 'block';
+        document.getElementById('connect-ui').style.display = 'block';
       });
 
       peer.on('connection', connection => {
@@ -54,6 +60,9 @@
 
       document.getElementById('username').disabled = true;
       document.querySelector('button[onclick="startGame()"]').disabled = true;
+
+      init3D();
+      animate();
     }
 
     function connectToPeer() {
@@ -65,46 +74,109 @@
 
     function setupConnection() {
       conn.on('open', () => {
-        // Send player info (position + name)
-        conn.send(player);
+        conn.send(players.local);
       });
-
       conn.on('data', data => {
-        enemy.x = data.x;
-        enemy.y = data.y;
-        enemy.name = data.name || 'Enemy';
+        players.remote.x = data.x;
+        players.remote.z = data.z;
+        players.remote.name = data.name;
       });
     }
 
-    document.addEventListener('keydown', e => {
-      const speed = 5;
-      if (e.key === 'ArrowUp') player.y -= speed;
-      if (e.key === 'ArrowDown') player.y += speed;
-      if (e.key === 'ArrowLeft') player.x -= speed;
-      if (e.key === 'ArrowRight') player.x += speed;
+    function init3D() {
+      // Scene
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x222222);
 
-      if (conn && conn.open) conn.send(player);
-    });
+      // Camera
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 10, 10);
+      camera.lookAt(0, 0, 0);
 
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Renderer
+      renderer = new THREE.WebGLRenderer();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
 
-      // Draw player
-      ctx.fillStyle = player.color;
-      ctx.fillRect(player.x, player.y, 20, 20);
-      ctx.fillStyle = 'white';
-      ctx.fillText(player.name, player.x - 10, player.y - 5);
+      // Light
+      const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
+      light.position.set(0, 20, 0);
+      scene.add(light);
 
-      // Draw enemy
-      ctx.fillStyle = enemy.color;
-      ctx.fillRect(enemy.x, enemy.y, 20, 20);
-      ctx.fillStyle = 'white';
-      ctx.fillText(enemy.name, enemy.x - 10, enemy.y - 5);
+      // Ground
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(50, 50),
+        new THREE.MeshStandardMaterial({ color: 0x333333 })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      scene.add(ground);
 
-      requestAnimationFrame(draw);
+      // Local cube
+      localCube = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1, 1),
+        new THREE.MeshStandardMaterial({ color: players.local.color })
+      );
+      scene.add(localCube);
+
+      // Remote cube
+      remoteCube = new THREE.Mesh(
+        new THREE.BoxGeometry(1, 1, 1),
+        new THREE.MeshStandardMaterial({ color: players.remote.color })
+      );
+      scene.add(remoteCube);
+
+      // Labels (just basic text overlays)
+      localLabel = createLabel(players.local.name);
+      remoteLabel = createLabel(players.remote.name);
     }
 
-    draw();
-  </script>
-</body>
-</html>
+    function createLabel(text) {
+      const div = document.createElement('div');
+      div.style.position = 'absolute';
+      div.style.color = 'white';
+      div.style.fontSize = '14px';
+      div.textContent = text;
+      document.body.appendChild(div);
+      return div;
+    }
+
+    function updateLabelPosition(label, obj) {
+      const vector = new THREE.Vector3();
+      obj.getWorldPosition(vector);
+      vector.project(camera);
+      const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+      label.style.left = `${x}px`;
+      label.style.top = `${y - 20}px`;
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      // Movement
+      if (document.hasFocus()) {
+        const speed = 0.1;
+        if (keys['ArrowUp']) players.local.z -= speed;
+        if (keys['ArrowDown']) players.local.z += speed;
+        if (keys['ArrowLeft']) players.local.x -= speed;
+        if (keys['ArrowRight']) players.local.x += speed;
+
+        localCube.position.set(players.local.x, 0.5, players.local.z);
+        if (conn && conn.open) conn.send(players.local);
+      }
+
+      // Remote player
+      remoteCube.position.set(players.remote.x, 0.5, players.remote.z);
+      remoteLabel.textContent = players.remote.name;
+      localLabel.textContent = players.local.name;
+
+      updateLabelPosition(localLabel, localCube);
+      updateLabelPosition(remoteLabel, remoteCube);
+
+      renderer.render(scene, camera);
+    }
+
+    const keys = {};
+    window.addEventListener('keydown', e => keys[e.key] = true);
+    window.addEventListener('keyup', e => keys[e.key] = false);
+    window.addE
