@@ -1,0 +1,33 @@
+{
+  "name": "fortnite-clone",
+  "version": "1.0.0",
+  "description": "Multiplayer Fortnite-style game with Three.js, Node.js, and Electron",
+  "main": "electron.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "dev": "concurrently \"npm run server\" \"npm run start\"",
+    "server": "node server/server.js"
+  },
+  "author": "Ryan Antony",
+  "license": "MIT",
+  "dependencies": {
+    "three": "^0.161.0",
+    "ws": "^8.13.0",
+    "electron": "^26.0.0"
+  },
+  "devDependencies": {
+    "electron-builder": "^24.6.1",
+    "concurrently": "^8.2.0"
+  },
+  "build": {
+    "appId": "com.ryan.fortniteclone",
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "directories": {
+      "output": "dist"
+    }
+  }
+}
